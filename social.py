@@ -1,12 +1,22 @@
+"""
+Social Media Post Generator
+--------------------------
+This script creates a web interface for generating social media posts with captions, emojis, and hashtags.
+It uses the Hugging Face Transformers library for text generation and sentiment analysis.
+"""
+
 import gradio as gr
 from transformers import pipeline
 import random
 
-# Initialize the models
+# Initialize the machine learning models
+# GPT-2 model for text generation
 caption_generator = pipeline("text-generation", model="gpt2")
+# Sentiment analysis model to determine emotion in text
 sentiment_pipeline = pipeline("sentiment-analysis")
 
-# Emoji dictionary
+# Dictionary mapping sentiment categories to relevant emojis
+# Used to add contextual emojis based on the sentiment of generated text
 emoji_dict = {
     "positive": ["😊", "🌟", "🔥", "💪", "🚀", "✨"],
     "negative": ["😢", "😞", "💔", "😠", "😓"],
@@ -14,46 +24,90 @@ emoji_dict = {
 }
 
 def get_emojis(text):
+    """
+    Generate relevant emojis based on the sentiment of the input text.
+    
+    Args:
+        text (str): Input text to analyze for sentiment
+        
+    Returns:
+        str: String of 3 emojis matching the detected sentiment
+    """
     try:
+        # Get sentiment label (positive/negative/neutral)
         label = sentiment_pipeline(text)[0]['label'].lower()
+        # Return 3 random emojis matching the sentiment
         return ''.join(random.sample(emoji_dict.get(label, ["😐"]), 3))
-    except:
+    except Exception as e:
+        # Default to happy emojis if there's an error in sentiment analysis
+        print(f"Error in sentiment analysis: {e}")
         return "😊😊😊"
 
 def get_hashtags(prompt, platform):
+    """
+    Generate relevant hashtags based on the input prompt and selected platform.
+    
+    Args:
+        prompt (str): User's input text
+        platform (str): Selected social media platform
+        
+    Returns:
+        str: String of generated hashtags
+    """
+    # Extract words longer than 3 characters from the prompt
     words = prompt.lower().split()
     tags = ["#" + word.replace(" ", "") for word in words if len(word) > 3]
 
+    # Platform-specific hashtag suggestions
     platform_tags = {
         "Instagram": ["#instadaily", "#igers", "#picoftheday", "#instagood", "#photooftheday"],
         "LinkedIn": ["#career", "#leadership", "#networking", "#business", "#success"],
         "Twitter": ["#tweet", "#trending", "#news", "#viral", "#twitter"]
     }
+    
+    # Combine 5 most relevant hashtags from prompt with 2 platform-specific ones
     return " ".join(tags[:5] + random.sample(platform_tags[platform], 2))
 
 def generate_post(prompt, platform):
+    """
+    Generate a complete social media post including caption, emojis, and hashtags.
+    
+    Args:
+        prompt (str): User's input text or theme
+        platform (str): Selected social media platform
+        
+    Returns:
+        tuple: (caption, emojis, hashtags) - The generated post components
+    """
+    # Validate input
     if not prompt.strip():
         return "Please enter a keyword or theme", "", ""
+    
+    try:
+        # Generate caption using GPT-2 model
+        caption = caption_generator(
+            prompt,                    # Input prompt
+            max_length=100,           # Maximum length of generated text
+            num_return_sequences=1,    # Number of captions to generate
+            do_sample=True,           # Enable random sampling for diverse outputs
+            temperature=0.9,          # Controls randomness (higher = more random)
+            top_p=0.9                 # Nucleus sampling parameter
+        )[0]['generated_text']
+
+        # Generate relevant emojis based on caption sentiment
+        emojis = get_emojis(caption)
+
+        # Generate platform-appropriate hashtags
+        hashtags = get_hashtags(prompt, platform)
+
+        return caption.strip(), emojis, hashtags
         
-    # Generate caption
-    caption = caption_generator(
-        prompt,
-        max_length=100,
-        num_return_sequences=1,
-        do_sample=True,
-        temperature=0.9,
-        top_p=0.9
-    )[0]['generated_text']
+    except Exception as e:
+        print(f"Error generating post: {e}")
+        return "An error occurred while generating the post. Please try again.", "", ""
 
-    # Generate emojis
-    emojis = get_emojis(caption)
-
-    # Generate hashtags
-    hashtags = get_hashtags(prompt, platform)
-
-    return caption.strip(), emojis, hashtags
-
-# Custom CSS for better styling
+# Custom CSS for enhancing the web interface
+# This CSS customizes the appearance of the Gradio UI components
 custom_css = """
 .gradio-container {
     max-width: 800px !important;
@@ -90,7 +144,8 @@ h1 {
 }
 """
 
-# Create the interface
+# Create the main application interface using Gradio Blocks
+# This sets up the web UI with custom styling and layout
 with gr.Blocks(css=custom_css, theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
     # 🚀 Social Media Post Generator
@@ -177,6 +232,9 @@ with gr.Blocks(css=custom_css, theme=gr.themes.Soft()) as demo:
         outputs=copy_output
     )
 
-# Launch the app
+# Main entry point for the application
 if __name__ == "__main__":
+    # Start the web server and make the interface publicly accessible
+    # Set share=True to create a public link (useful for sharing)
+    # For production, you might want to set share=False and configure proper hosting
     demo.launch(share=True)
